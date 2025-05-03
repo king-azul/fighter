@@ -1,63 +1,18 @@
+mod fight_db;
+
 use crossterm::{
     cursor,
     terminal::{Clear, ClearType},
     ExecutableCommand,
 };
 use rand::Rng;
-use rusqlite::{params, Connection, Result};
 use std::io::{self, Write};
 use std::{thread, time::Duration};
-
-fn populate_db() -> Result<()> {
-    // Connect to the store.db file
-    let conn = Connection::open("store.db")?;
-
-    // Create the countries table if it doesn't exist
-    conn.execute(
-        "CREATE TABLE IF NOT EXISTS countries (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL UNIQUE,
-            ticket_price REAL NOT NULL
-        )",
-        [],
-    )?;
-
-    // Insert example countries
-    let countries = vec![
-        ("Barcelona", 25.0),
-        ("Paris", 30.0),
-        ("London", 28.5),
-        ("Berlin", 27.0),
-        ("Lisbon", 22.5),
-    ];
-
-    for (name, price) in countries {
-        conn.execute(
-            "INSERT OR IGNORE INTO countries (name, ticket_price) VALUES (?1, ?2)",
-            params![name, price],
-        )?;
-    }
-
-    println!("Migration and data insertion complete.");
-    Ok(())
-}
 
 const ARENA_WIDTH: usize = 20;
 const ARENA_HEIGHT: usize = 10;
 const MOVE_DELAY_MS: u64 = 300;
 const FIGHTERS_COUNT: u32 = 4;
-
-#[derive(Clone, Debug)]
-struct Location {
-    name: String,
-    flight_cost: f64,
-}
-
-impl Location {
-    fn new(name: String, flight_cost: f64) -> Self {
-        Location { name, flight_cost }
-    }
-}
 
 #[derive(Clone, Debug)]
 struct Fighter {
@@ -225,30 +180,11 @@ fn check_for_battles(fighters: &mut [Fighter]) -> Vec<String> {
     turn_combatlog
 }
 
-fn get_locations_from_db() -> Result<Vec<Location>> {
-    let conn = Connection::open("store.db")?;
-    let mut locations: Vec<Location> = vec![];
-
-    let mut stmt =
-        conn.prepare("SELECT name, ticket_price FROM countries ORDER BY RANDOM() LIMIT ?1")?;
-
-    let db_vec = stmt
-        .query_map(params![FIGHTERS_COUNT], |row| {
-            Ok((row.get::<_, String>(0)?, row.get::<_, f64>(1)?))
-        })?
-        .collect::<Result<Vec<_>>>()?;
-    for l in db_vec {
-        locations.push(Location::new(l.0, l.1));
-    }
-
-    Ok(locations)
-}
-
 fn place_fighters_initially(arena: &[[char; ARENA_WIDTH]; ARENA_HEIGHT]) -> Vec<Fighter> {
     println!("Placing fighters!");
     let mut rng = rand::rng();
     let mut fighters = Vec::new();
-    let location_result = get_locations_from_db();
+    let location_result = fight_db::get_x_locations_from_db(FIGHTERS_COUNT);
     match location_result {
         Ok(locations) => {
             for l in locations {
@@ -298,7 +234,7 @@ fn main() {
     let mut input = String::new();
     io::stdin().read_line(&mut input).unwrap();
 
-    let _ = populate_db();
+    let _ = fight_db::populate_db();
     let mut arena = create_arena();
     let mut fighters = place_fighters_initially(&arena);
     let mut combatlog = vec![];
