@@ -5,13 +5,13 @@ use crossterm::{
     terminal::{Clear, ClearType},
     ExecutableCommand,
 };
-use rand::Rng;
+use rand::{random_range, rng, Rng};
 use std::io::{self, Write};
 use std::{thread, time::Duration};
 
 const ARENA_WIDTH: usize = 20;
 const ARENA_HEIGHT: usize = 10;
-const MOVE_DELAY_MS: u64 = 300; // How fast everything progresses
+const MOVE_DELAY_MS: u64 = 200; // How fast everything progresses
 const FIGHTERS_COUNT: u32 = 5;
 
 #[derive(Clone, Debug)]
@@ -19,6 +19,7 @@ struct Fighter {
     name: String,
     health: i32,
     attack: i32,
+    ac: i32, // Armour class, how hard they are to hit. 0-20, 0 will be hit all of the time, 20 will never be hit
     position: (usize, usize),
 }
 
@@ -28,6 +29,7 @@ impl Fighter {
             name,
             health,
             attack,
+            ac: 10,
             position,
         }
     }
@@ -60,6 +62,12 @@ impl Fighter {
     }
     fn increase_health(&mut self, x: i32) {
         self.health += x;
+    }
+    fn increase_ac(&mut self, x: i32) {
+        self.ac += x;
+    }
+    fn roll_20(&self) -> i32 {
+        random_range(0..21)
     }
     // fn attack_fighter(&self, other: &mut Fighter) {
     //     other.health -= self.attack;
@@ -134,51 +142,50 @@ fn print_combatlog(log: &Vec<String>) {
 }
 
 fn check_for_battles(fighters: &mut [Fighter]) -> Vec<String> {
-    // Create a vector of indices for alive fighters
-    let alive_indices: Vec<usize> = fighters
-        .iter()
-        .enumerate()
-        .filter(|(_, f)| f.is_alive())
-        .map(|(i, _)| i)
-        .collect();
-
     // Check for battles
     let mut turn_combatlog: Vec<String> = vec![];
-    for i in 0..alive_indices.len() {
-        for j in (i + 1)..alive_indices.len() {
-            let idx_i = alive_indices[i];
-            let idx_j = alive_indices[j];
+    for attacker_id in 0..fighters.len() {
+        if !fighters[attacker_id].is_alive() {
+            continue;
+        }
+        for defender_id in 0..fighters.len() {
+            if !fighters[defender_id].is_alive()
+                || fighters[attacker_id].name == fighters[defender_id].name
+            {
+                continue;
+            }
 
             // If fighters are at the same position, they battle
-            if fighters[idx_i]
+            if fighters[attacker_id]
                 .position
                 .0
-                .abs_diff(fighters[idx_j].position.0)
+                .abs_diff(fighters[defender_id].position.0)
                 <= 1
-                && fighters[idx_i]
+                && fighters[attacker_id]
                     .position
                     .1
-                    .abs_diff(fighters[idx_j].position.1)
+                    .abs_diff(fighters[defender_id].position.1)
                     <= 1
             {
-                // Both fighters attack each other
-                let attack_i = fighters[idx_i].attack;
-                fighters[idx_j].health -= attack_i;
+                // Attack
+                if fighters[attacker_id].roll_20() > fighters[defender_id].ac {
+                    fighters[defender_id].health -= fighters[attacker_id].attack;
 
-                let attack_j = fighters[idx_j].attack;
-                fighters[idx_i].health -= attack_j;
+                    let combatlog_entry: String = format!(
+                        "{} attacked {} and dealt {} damage!",
+                        fighters[attacker_id].name,
+                        fighters[defender_id].name,
+                        fighters[attacker_id].attack
+                    );
 
-                let combatlog_entry: String = format!(
-                    "{} and {} fought! {} dealt {} damage and {} dealt {} damage!",
-                    fighters[idx_i].name,
-                    fighters[idx_j].name,
-                    fighters[idx_i].name,
-                    attack_i,
-                    fighters[idx_j].name,
-                    attack_j,
-                );
-
-                turn_combatlog.push(combatlog_entry);
+                    turn_combatlog.push(combatlog_entry)
+                } else {
+                    let combatlog_entry: String = format!(
+                        "{} attacked {} but missed!",
+                        fighters[attacker_id].name, fighters[defender_id].name
+                    );
+                    turn_combatlog.push(combatlog_entry)
+                }
             }
         }
     }
@@ -193,11 +200,9 @@ fn place_fighters_initially(arena: &[[char; ARENA_WIDTH]; ARENA_HEIGHT]) -> Vec<
     match location_result {
         Ok(locations) => {
             for l in locations {
-                // Generate random stats
+                // Generate stats
                 let health = (1000.0 - (25.0 - l.temp).abs() * 100.0) as i32; // How far from 25 decreed C is the country
                 let attack = ((1000.0 - l.ticket_price) / 10.0) as i32;
-
-                // dbg!(&l.name, &health, &attack);
 
                 // Find empty position
                 let mut position;
@@ -245,21 +250,22 @@ fn main() {
     update_arena(&mut arena, &fighters);
     print_arena(&arena, &fighters);
 
+    // Buffs for the fighters pre-battle
     println!("Who do you bestow with the sword (+attack)?\n");
     let mut sword_choice = String::new();
     io::stdin()
         .read_line(&mut sword_choice)
         .expect("Failed to read line");
-    println!("Who do you bestow with the shield (+health)?\n");
+    println!("...and who do you bless with the shield (+health)?\n");
     let mut shield_choice = String::new();
     io::stdin()
         .read_line(&mut shield_choice)
         .expect("Failed to read line");
     for f in fighters.iter_mut() {
-        if f.name == sword_choice.trim() {
+        if f.name.to_lowercase() == sword_choice.to_lowercase().trim() {
             f.increase_attack(30);
         }
-        if f.name == shield_choice.trim() {
+        if f.name.to_lowercase() == shield_choice.to_lowercase().trim() {
             f.increase_health(100);
         }
     }
