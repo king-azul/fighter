@@ -11,8 +11,8 @@ use std::{thread, time::Duration};
 
 const ARENA_WIDTH: usize = 20;
 const ARENA_HEIGHT: usize = 10;
-const MOVE_DELAY_MS: u64 = 300;
-const FIGHTERS_COUNT: u32 = 4;
+const MOVE_DELAY_MS: u64 = 300; // How fast everything progresses
+const FIGHTERS_COUNT: u32 = 5;
 
 #[derive(Clone, Debug)]
 struct Fighter {
@@ -55,7 +55,12 @@ impl Fighter {
             }
         }
     }
-
+    fn increase_attack(&mut self, x: i32) {
+        self.attack += x;
+    }
+    fn increase_health(&mut self, x: i32) {
+        self.health += x;
+    }
     // fn attack_fighter(&self, other: &mut Fighter) {
     //     other.health -= self.attack;
     // }
@@ -123,7 +128,7 @@ fn print_arena(arena: &[[char; ARENA_WIDTH]; ARENA_HEIGHT], fighters: &[Fighter]
 }
 
 fn print_combatlog(log: &Vec<String>) {
-    for s in log {
+    for s in log.iter().rev().take(5).rev() {
         println!("{s}");
     }
 }
@@ -189,8 +194,10 @@ fn place_fighters_initially(arena: &[[char; ARENA_WIDTH]; ARENA_HEIGHT]) -> Vec<
         Ok(locations) => {
             for l in locations {
                 // Generate random stats
-                let health = (100.0 - l.flight_cost) as i32;
-                let attack = rng.random_range(10..26);
+                let health = (1000.0 - (25.0 - l.temp).abs() * 100.0) as i32; // How far from 25 decreed C is the country
+                let attack = ((1000.0 - l.ticket_price) / 10.0) as i32;
+
+                // dbg!(&l.name, &health, &attack);
 
                 // Find empty position
                 let mut position;
@@ -230,14 +237,38 @@ fn get_winner(fighters: &[Fighter]) -> Option<&Fighter> {
 
 fn main() {
     println!("Arena Fighter Game");
-    println!("Press Enter to start...");
-    let mut input = String::new();
-    io::stdin().read_line(&mut input).unwrap();
 
     let _ = fight_db::populate_db();
     let mut arena = create_arena();
     let mut fighters = place_fighters_initially(&arena);
     let mut combatlog = vec![];
+    update_arena(&mut arena, &fighters);
+    print_arena(&arena, &fighters);
+
+    println!("Who do you bestow with the sword (+attack)?\n");
+    let mut sword_choice = String::new();
+    io::stdin()
+        .read_line(&mut sword_choice)
+        .expect("Failed to read line");
+    println!("Who do you bestow with the shield (+health)?\n");
+    let mut shield_choice = String::new();
+    io::stdin()
+        .read_line(&mut shield_choice)
+        .expect("Failed to read line");
+    for f in fighters.iter_mut() {
+        if f.name == sword_choice.trim() {
+            f.increase_attack(30);
+        }
+        if f.name == shield_choice.trim() {
+            f.increase_health(100);
+        }
+    }
+    update_arena(&mut arena, &fighters);
+    print_arena(&arena, &fighters);
+
+    println!("The fighters await your signal. Press ENTER to begin...");
+    let mut input = String::new();
+    io::stdin().read_line(&mut input).unwrap();
 
     // Game loop
     loop {
