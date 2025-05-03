@@ -1,0 +1,13 @@
+[package]
+name = "fighter"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+rand = "0.9.1"
+crossterm = "0.29.0"
+rusqlite = { version = "0.35.0", features = ["bundled"] }
+
+[[bin]]
+name = "fighter"
+path = "src/main.rs"
