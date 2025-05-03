@@ -5,21 +5,21 @@ use crossterm::{
     terminal::{Clear, ClearType},
     ExecutableCommand,
 };
-use rand::{random_range, rng, Rng};
+use rand::{random_range, rng, seq::SliceRandom, Rng};
 use std::io::{self, Write};
 use std::{thread, time::Duration};
 
-const ARENA_WIDTH: usize = 20;
+const ARENA_WIDTH: usize = 80;
 const ARENA_HEIGHT: usize = 10;
-const MOVE_DELAY_MS: u64 = 200; // How fast everything progresses
-const FIGHTERS_COUNT: u32 = 5;
+const MOVE_DELAY_MS: u64 = 400; // How fast everything progresses
+const FIGHTERS_COUNT: u32 = 10;
 
 #[derive(Clone, Debug)]
 struct Fighter {
     name: String,
     health: i32,
     attack: i32,
-    ac: i32, // Armour class, how hard they are to hit. 0-20, 0 will be hit all of the time, 20 will never be hit
+    ac: i32, // Armour class, how difficult they are to hit. 0-20, 0 will be hit all of the time, 20 will never be hit
     position: (usize, usize),
 }
 
@@ -29,7 +29,7 @@ impl Fighter {
             name,
             health,
             attack,
-            ac: 10,
+            ac: 8,
             position,
         }
     }
@@ -40,8 +40,18 @@ impl Fighter {
 
     fn move_randomly(&mut self, arena: &[[char; ARENA_WIDTH]; ARENA_HEIGHT]) {
         let mut rng = rand::rng();
-        let dirs = [(0, 1), (1, 0), (0, -1), (-1, 0)]; // right, down, left, up
-        let dir = dirs[rng.random_range(0..4)];
+        let dirs = [
+            (0, 1),
+            (1, 0),
+            (0, -1),
+            (-1, 0),
+            (1, 1),
+            (-1, -1),
+            (1, -1),
+            (-1, 1),
+            (0, 0),
+        ];
+        let dir = dirs[rng.random_range(0..dirs.len())];
 
         let new_x = self.position.0 as i32 + dir.0;
         let new_y = self.position.1 as i32 + dir.1;
@@ -57,6 +67,32 @@ impl Fighter {
             }
         }
     }
+
+    fn move_towards(
+        &mut self,
+        arena: &[[char; ARENA_WIDTH]; ARENA_HEIGHT],
+        target: (usize, usize),
+    ) {
+        let mut new_x: usize = self.position.0;
+        if self.position.0 < target.0 {
+            new_x = (self.position.0 as i32 + 1) as usize
+        } else if self.position.0 > target.0 {
+            new_x = (self.position.0 as i32 - 1) as usize
+        }
+
+        let mut new_y: usize = self.position.1;
+        if self.position.1 < target.1 {
+            new_y = (self.position.1 as i32 + 1) as usize
+        } else if self.position.1 > target.1 {
+            new_y = (self.position.1 as i32 - 1) as usize
+        }
+
+        // Only move if the position is empty (contains a space)
+        if arena[new_y][new_x] == ' ' {
+            self.position = (new_x, new_y);
+        }
+    }
+
     fn increase_attack(&mut self, x: i32) {
         self.attack += x;
     }
@@ -69,9 +105,14 @@ impl Fighter {
     fn roll_20(&self) -> i32 {
         random_range(0..21)
     }
-    // fn attack_fighter(&self, other: &mut Fighter) {
-    //     other.health -= self.attack;
-    // }
+    fn find_opponent_position(&self, fighters: &[Fighter]) -> Option<(usize, usize)> {
+        for fighter in fighters {
+            if fighter.health > 0 && fighter.health < self.health {
+                return Some(fighter.position);
+            }
+        }
+        None
+    }
 }
 
 fn create_arena() -> [[char; ARENA_WIDTH]; ARENA_HEIGHT] {
@@ -119,23 +160,19 @@ fn print_arena(arena: &[[char; ARENA_WIDTH]; ARENA_HEIGHT], fighters: &[Fighter]
     // Print fighter stats
     println!("\nFighter Stats:");
     for fighter in fighters {
-        println!(
-            "{}: Health: {}, Attack: {}{}",
-            fighter.name,
-            fighter.health,
-            fighter.attack,
-            if !fighter.is_alive() {
-                " (DEFEATED)"
-            } else {
-                ""
-            }
-        );
+        if !fighter.is_alive() {
+            println!("{}  (DEFEATED)", fighter.name);
+        } else {
+            println!(
+                "{}: Health: {}, Attack: {}",
+                fighter.name, fighter.health, fighter.attack
+            );
+        }
     }
-
     io::stdout().flush().unwrap();
 }
 
-fn print_combatlog(log: &Vec<String>) {
+fn print_combatlog(log: &[String]) {
     for s in log.iter().rev().take(5).rev() {
         println!("{s}");
     }
@@ -225,10 +262,7 @@ fn place_fighters_initially(arena: &[[char; ARENA_WIDTH]; ARENA_HEIGHT]) -> Vec<
             }
             fighters
         }
-        Err(_e) => {
-            println!("ERROR: No locations returned from db.");
-            fighters
-        }
+        Err(_e) => fighters,
     }
 }
 
@@ -278,6 +312,7 @@ fn main() {
 
     // Game loop
     loop {
+        fighters.shuffle(&mut rng());
         update_arena(&mut arena, &fighters);
         print_arena(&arena, &fighters);
         print_combatlog(&combatlog);
@@ -296,8 +331,20 @@ fn main() {
         }
 
         // Move fighters
-        for fighter in fighters.iter_mut().filter(|f| f.is_alive()) {
-            fighter.move_randomly(&arena);
+        for i in 0..fighters.len() {
+            if fighters[i].is_alive() {
+                match fighters[i].find_opponent_position(&fighters) {
+                    Some(opponent_position) => {
+                        if random_range(0..11) < 6 {
+                            // Its boring if they track their targets perfectly, so I use chance
+                            fighters[i].move_towards(&arena, opponent_position)
+                        } else {
+                            fighters[i].move_randomly(&arena);
+                        }
+                    }
+                    None => fighters[i].move_randomly(&arena),
+                }
+            }
         }
 
         // Check for battles
