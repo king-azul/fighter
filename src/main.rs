@@ -106,9 +106,11 @@ impl Fighter {
         random_range(0..21)
     }
     fn find_opponent_position(&self, fighters: &[Fighter]) -> Option<(usize, usize)> {
-        for fighter in fighters {
-            if fighter.health > 0 && fighter.health < self.health {
-                return Some(fighter.position);
+        let mut indexes: Vec<usize> = (0..(fighters.len())).collect();
+        indexes.shuffle(&mut rng());
+        for i in indexes {
+            if fighters[i].health > 0 && fighters[i].health < self.health {
+                return Some(fighters[i].position);
             }
         }
         None
@@ -173,6 +175,7 @@ fn print_arena(arena: &[[char; ARENA_WIDTH]; ARENA_HEIGHT], fighters: &[Fighter]
 }
 
 fn print_combatlog(log: &[String]) {
+    println!("\nCOMBAT:");
     for s in log.iter().rev().take(5).rev() {
         println!("{s}");
     }
@@ -312,7 +315,6 @@ fn main() {
 
     // Game loop
     loop {
-        fighters.shuffle(&mut rng());
         update_arena(&mut arena, &fighters);
         print_arena(&arena, &fighters);
         print_combatlog(&combatlog);
